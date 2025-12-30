@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import { 
+  documentDirectory, 
+  getInfoAsync, 
+  makeDirectoryAsync, 
+  copyAsync, 
+  deleteAsync
+} from 'expo-file-system';
 import { EpubParser } from '../utils/EpubParser';
 
 export interface Book {
@@ -28,18 +34,18 @@ export const BookRepository = {
 
   async addBook(sourceUri: string): Promise<Book> {
     const id = Date.now().toString();
-    const booksDir = `${FileSystem.documentDirectory as string}books/`;
+    const booksDir = `${documentDirectory}books/`;
     
     // Ensure directory exists
-    const dirInfo = await FileSystem.getInfoAsync(booksDir);
+    const dirInfo = await getInfoAsync(booksDir);
     if (!dirInfo.exists) {
-      await FileSystem.makeDirectoryAsync(booksDir, { intermediates: true });
+      await makeDirectoryAsync(booksDir, { intermediates: true });
     }
 
     const destUri = `${booksDir}${id}.epub`;
 
     // 1. Copy file to app storage
-    await FileSystem.copyAsync({
+    await copyAsync({
       from: sourceUri,
       to: destUri
     });
@@ -73,7 +79,7 @@ export const BookRepository = {
 
   async clearAll(): Promise<void> {
     await AsyncStorage.removeItem(BOOKS_KEY);
-    const booksDir = `${FileSystem.documentDirectory as string}books/`;
-    await FileSystem.deleteAsync(booksDir, { idempotent: true });
+    const booksDir = `${documentDirectory}books/`;
+    await deleteAsync(booksDir, { idempotent: true });
   }
 };
