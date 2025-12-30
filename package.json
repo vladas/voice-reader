@@ -9,9 +9,13 @@
     "web": "expo start --web",
     "test": "jest"
   },
+  "engines": {
+    "node": ">=24"
+  },
   "dependencies": {
     "@expo-google-fonts/lora": "^0.4.2",
     "@launchdarkly/react-native-client-sdk": "^10.12.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "buffer": "^6.0.3",
     "epubjs": "^0.3.93",
     "expo": "~54.0.30",
