@@ -11,7 +11,7 @@ export const EpubParser = {
   parse: async (uri: string): Promise<BookMetadata> => {
     // Read the file from the device file system as a base64 string
     const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
 
     // Convert base64 to an ArrayBuffer which epub.js can consume
