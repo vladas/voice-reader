@@ -25,6 +25,7 @@ export const EpubParser = {
     await book.ready;
 
     // Extract metadata
+    // @ts-ignore: epubjs types are incomplete
     const { title, creator } = book.package.metadata;
 
     return {
