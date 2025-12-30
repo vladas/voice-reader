@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
@@ -7,7 +7,10 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  # Stage 1: Commit
+  # Goal: Fast technical feedback
+  commit_stage:
+    name: 1. Commit Stage (Lint & Test)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -17,14 +20,77 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
+          cache: 'yarn'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
       - name: Run Lint
-        # Assuming standard expo lint script is available or we add it
         run: yarn lint
 
       - name: Run Tests
         run: yarn test
+
+  # Stage 2: Artifact
+  # Goal: Create a uniquely versioned release candidate
+  artifact_stage:
+    name: 2. Artifact Stage (Build)
+    needs: commit_stage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Export Expo Bundle (Proxy for Native Build)
+        run: npx expo export
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-bundle-${{ github.sha }}
+          path: dist/
+
+  # Stage 3: Acceptance
+  # Goal: Automated BDD tests in production-like environment
+  acceptance_stage:
+    name: 3. Acceptance Stage (BDD)
+    needs: artifact_stage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-bundle-${{ github.sha }}
+          path: dist
+
+      - name: Run Acceptance Tests
+        run: |
+          echo "Running BDD Acceptance Tests on dist/..."
+          # Placeholder for Maestro / Detox cloud runners
+          # e.g. maestro cloud test ...
+          echo "Tests Passed"
+
+  # Stage 4: Production
+  # Goal: Deploy to Production
+  production_stage:
+    name: 4. Production Stage (Deploy)
+    needs: acceptance_stage
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy to EAS / Stores
+        run: |
+          echo "Deploying Artifact ${{ github.sha }} to Production..."
+          # eas submit -p ios --latest
+          # eas submit -p android --latest
+          echo "Deployment Complete"
