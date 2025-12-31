@@ -28,6 +28,7 @@
     "expo-speech": "~14.0.8",
     "expo-splash-screen": "^31.0.13",
     "expo-status-bar": "~3.0.9",
+    "invariant": "^2.2.4",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "^5.6.2",
@@ -37,6 +38,7 @@
   "devDependencies": {
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
+    "@types/invariant": "^2.2.37",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.0",
     "eslint": "^9.0.0",
@@ -51,7 +53,7 @@
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
       "eslint --fix",
-      "yarn test --findRelatedTests"
+      "yarn test --findRelatedTests --passWithNoTests"
     ]
   }
 }

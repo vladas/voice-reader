@@ -24,7 +24,6 @@ export const LibraryScreen = () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/epub+zip',
-        copyToCacheDirectory: true,
       });
 
       if (result.canceled) return;
@@ -84,8 +83,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingVertical: 20,
+    paddingVertical: 0,
     borderBottomWidth: 1,
+    paddingHorizontal: 10,
     borderBottomColor: 'rgba(74, 59, 50, 0.1)',
     flexDirection: 'row',
     justifyContent: 'space-between',

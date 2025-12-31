@@ -2612,6 +2612,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/invariant@npm:^2.2.37":
+  version: 2.2.37
+  resolution: "@types/invariant@npm:2.2.37"
+  checksum: 10c0/f57ed8445036ebda8bc93804f088c2a13050bbeef4e4bc6ed531a70e2869250dbe59413f2a9ed7d8f3efa960f191e8dfca9d25414d63cbf604d348428f8c5b75
+  languageName: node
+  linkType: hard
+
 "@types/istanbul-lib-coverage@npm:*, @types/istanbul-lib-coverage@npm:^2.0.0, @types/istanbul-lib-coverage@npm:^2.0.1, @types/istanbul-lib-coverage@npm:^2.0.6":
   version: 2.0.6
   resolution: "@types/istanbul-lib-coverage@npm:2.0.6"
@@ -10580,6 +10587,7 @@ __metadata:
     "@react-native-async-storage/async-storage": "npm:2.2.0"
     "@testing-library/jest-native": "npm:^5.4.3"
     "@testing-library/react-native": "npm:^13.3.3"
+    "@types/invariant": "npm:^2.2.37"
     "@types/jest": "npm:^30.0.0"
     "@types/react": "npm:~19.1.0"
     buffer: "npm:^6.0.3"
@@ -10594,6 +10602,7 @@ __metadata:
     expo-splash-screen: "npm:^31.0.13"
     expo-status-bar: "npm:~3.0.9"
     husky: "npm:^9.1.7"
+    invariant: "npm:^2.2.4"
     jest: "npm:^30.2.0"
     jest-expo: "npm:^54.0.16"
     lint-staged: "npm:^16.2.7"
