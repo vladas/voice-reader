@@ -69,3 +69,9 @@ ADR template:
 * Consequences
 
 The title should represent the decision made.
+
+
+### Coding rules
+
+* Use yarn instead of npm
+* Use DDD for code design.

@@ -1,17 +1,23 @@
 import { EpubParser } from './EpubParser';
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import ePub from 'epubjs';
 
 // Mock expo-file-system
-jest.mock('expo-file-system', () => ({
-  readAsStringAsync: jest.fn(),
-  EncodingType: { Base64: 'base64' },
-}));
+jest.mock('expo-file-system', () => {
+  return {
+    __esModule: true,
+    File: jest.fn().mockImplementation(() => ({
+      bytes: jest.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    })),
+    // Add other exports if needed by other tests importing this mock scope
+  };
+});
 
 // Mock epubjs
 jest.mock('epubjs', () => {
   return jest.fn(() => ({
     ready: Promise.resolve(),
+    coverUrl: jest.fn().mockResolvedValue('data:image/jpeg;base64,mockcoverdata'),
     package: {
       metadata: {
         title: 'Mock Title',
@@ -26,23 +32,24 @@ describe('EpubParser', () => {
     // GIVEN a mock file URI
     const mockUri = 'file:///path/to/book.epub';
     
-    // Mock FS response
-    (FileSystem.readAsStringAsync as jest.Mock).mockResolvedValue('mockbase64data');
-
     // WHEN we call parse
     const book = await EpubParser.parse(mockUri);
 
-    // THEN it should read the file from FS
-    expect(FileSystem.readAsStringAsync).toHaveBeenCalledWith(mockUri, { encoding: 'base64' });
+    // THEN it should create a File instance
+    expect(File).toHaveBeenCalledWith(mockUri);
 
-    // AND it should initialize epubjs with buffer (we can't easily check the buffer content equality here without checking how we construct it, but we can check it was called)
+    // AND it should call bytes()
+    // We can't easily check the instance method call without capturing the instance, 
+    // but since we return mock data, the flow must have succeeded.
+
+    // AND it should initialize epubjs with buffer
     expect(ePub).toHaveBeenCalled();
 
     // AND it should return the book metadata
     expect(book).toEqual(expect.objectContaining({
       title: 'Mock Title',
       author: 'Mock Author',
+      cover: 'data:image/jpeg;base64,mockcoverdata',
     }));
   });
 });
-

@@ -1,10 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   documentDirectory, 
-  getInfoAsync, 
-  makeDirectoryAsync, 
-  copyAsync, 
-  deleteAsync
+  File,
+  Directory
 } from 'expo-file-system';
 import { EpubParser } from '../utils/EpubParser';
 
@@ -34,21 +32,20 @@ export const BookRepository = {
 
   async addBook(sourceUri: string): Promise<Book> {
     const id = Date.now().toString();
-    const booksDir = `${documentDirectory}books/`;
+    const booksDir = new Directory(`${documentDirectory}books/`);
     
     // Ensure directory exists
-    const dirInfo = await getInfoAsync(booksDir);
-    if (!dirInfo.exists) {
-      await makeDirectoryAsync(booksDir, { intermediates: true });
+    if (!booksDir.exists) {
+      await booksDir.create();
     }
 
-    const destUri = `${booksDir}${id}.epub`;
+    const destUri = `${documentDirectory}books/${id}.epub`;
+    const sourceFile = new File(sourceUri);
+    const destFile = new File(destUri);
 
     // 1. Copy file to app storage
-    await copyAsync({
-      from: sourceUri,
-      to: destUri
-    });
+    // Warning said: Use new File().copy()
+    await sourceFile.copy(destFile);
 
     // 2. Parse metadata
     let metadata;
@@ -79,7 +76,9 @@ export const BookRepository = {
 
   async clearAll(): Promise<void> {
     await AsyncStorage.removeItem(BOOKS_KEY);
-    const booksDir = `${documentDirectory}books/`;
-    await deleteAsync(booksDir, { idempotent: true });
+    const booksDir = new Directory(`${documentDirectory}books/`);
+    if (booksDir.exists) {
+      await booksDir.delete();
+    }
   }
 };
