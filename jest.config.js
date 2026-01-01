@@ -5,4 +5,7 @@ module.exports = {
   ],
   setupFilesAfterEnv: ['@testing-library/jest-native/extend-expect'],
   setupFiles: ['./jest.setup.js'],
+  moduleNameMapper: {
+    '^epubjs$': '<rootDir>/node_modules/epubjs/lib/index.js',
+  },
 };
