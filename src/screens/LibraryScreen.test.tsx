@@ -52,6 +52,12 @@ jest.mock('expo-file-system', () => {
   };
 });
 
+// Mock expo-file-system/legacy
+jest.mock('expo-file-system/legacy', () => ({
+  writeAsStringAsync: jest.fn(),
+  EncodingType: { Base64: 'base64' },
+}));
+
 // Mock EpubParser
 jest.mock('../utils/EpubParser', () => ({
   EpubParser: {
