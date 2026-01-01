@@ -29,21 +29,28 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 // Mock expo-file-system
-jest.mock('expo-file-system', () => ({
-  documentDirectory: 'file:///test-directory/',
-  File: jest.fn().mockImplementation((uri) => ({
-    uri,
-    copy: jest.fn().mockResolvedValue(true),
+jest.mock('expo-file-system', () => {
+  const mockFile = {
+    uri: 'file:///test-directory/target.epub',
+    copy: jest.fn(),
+    write: jest.fn(),
     exists: true,
-    bytes: jest.fn().mockResolvedValue(new Uint8Array()),
-  })),
-  Directory: jest.fn().mockImplementation((uri) => ({
-    uri,
+  };
+
+  const mockDirectory = {
     exists: false,
-    create: jest.fn().mockResolvedValue(true),
-    delete: jest.fn().mockResolvedValue(true),
-  })),
-}));
+    create: jest.fn(),
+    delete: jest.fn(),
+  };
+
+  return {
+    Paths: {
+      document: { uri: 'file:///test-directory/' }
+    },
+    File: jest.fn(() => mockFile),
+    Directory: jest.fn(() => mockDirectory),
+  };
+});
 
 // Mock EpubParser
 jest.mock('../utils/EpubParser', () => ({
@@ -96,7 +103,7 @@ describe('US-1.1: Library Import (E2E-like)', () => {
     expect(storedBooks[0]).toMatchObject({
       title: 'Test Book',
       author: 'Test Author',
-      uri: expect.stringContaining('file:///test-directory/books/'),
+      uri: 'file:///test-directory/target.epub',
     });
   });
 

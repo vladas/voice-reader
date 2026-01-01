@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { StyleSheet, View, TouchableOpacity, FlatList, Alert } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, FlatList, Alert, Image } from 'react-native';
 import { Screen } from '../components/Screen';
 import { StyledText } from '../components/StyledText';
 import * as DocumentPicker from 'expo-document-picker';
@@ -32,16 +32,20 @@ export const LibraryScreen = () => {
       await BookRepository.addBook(uri);
       await loadBooks();
     } catch (e) {
-      console.error(e);
-      Alert.alert('Error', 'Failed to import book');
+      console.error('Import failed:', e);
+      Alert.alert('Error', 'Failed to import book: ' + (e instanceof Error ? e.message : String(e)));
     }
   };
 
   const renderBook = ({ item }: { item: Book }) => (
     <View style={styles.bookItem}>
-      <View style={styles.bookCover}>
-        <StyledText variant="xl" weight="bold" color="#fff">{item.title[0]}</StyledText>
-      </View>
+      {item.cover ? (
+        <Image source={{ uri: item.cover }} style={styles.bookCover} />
+      ) : (
+        <View style={[styles.bookCover, styles.bookCoverPlaceholder]}>
+          <StyledText variant="xl" weight="bold" color="#fff">{item.title[0]}</StyledText>
+        </View>
+      )}
       <View style={styles.bookInfo}>
         <StyledText variant="m" weight="bold" numberOfLines={1}>{item.title}</StyledText>
         <StyledText variant="s" color="#666" numberOfLines={1}>{item.author}</StyledText>
@@ -118,11 +122,13 @@ const styles = StyleSheet.create({
   bookCover: {
     width: 50,
     height: 75,
+    borderRadius: 4,
+    marginRight: 16,
+  },
+  bookCoverPlaceholder: {
     backgroundColor: '#4A3B32',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 4,
-    marginRight: 16,
   },
   bookInfo: {
     flex: 1,
