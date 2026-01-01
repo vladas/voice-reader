@@ -3,73 +3,106 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { LibraryScreen } from './LibraryScreen';
 import * as DocumentPicker from 'expo-document-picker';
 import { BookRepository } from '../storage/BookRepository';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Mock dependencies
+// Mock DocumentPicker
 jest.mock('expo-document-picker');
-jest.mock('../storage/BookRepository');
 
-describe('US-1.1: Library Import', () => {
-  beforeEach(() => {
+// Manual Mock for AsyncStorage to ensure behavior
+const mockAsyncStorage: Record<string, string> = {};
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn((key: string) => {
+    return Promise.resolve(mockAsyncStorage[key] || null);
+  }),
+  setItem: jest.fn((key: string, value: string) => {
+    mockAsyncStorage[key] = value;
+    return Promise.resolve();
+  }),
+  removeItem: jest.fn((key: string) => {
+    delete mockAsyncStorage[key];
+    return Promise.resolve();
+  }),
+  clear: jest.fn(() => {
+    for (const key in mockAsyncStorage) delete mockAsyncStorage[key];
+    return Promise.resolve();
+  }),
+}));
+
+// Mock expo-file-system
+jest.mock('expo-file-system', () => ({
+  documentDirectory: 'file:///test-directory/',
+  File: jest.fn().mockImplementation((uri) => ({
+    uri,
+    copy: jest.fn().mockResolvedValue(true),
+    exists: true,
+    bytes: jest.fn().mockResolvedValue(new Uint8Array()),
+  })),
+  Directory: jest.fn().mockImplementation((uri) => ({
+    uri,
+    exists: false,
+    create: jest.fn().mockResolvedValue(true),
+    delete: jest.fn().mockResolvedValue(true),
+  })),
+}));
+
+// Mock EpubParser
+jest.mock('../utils/EpubParser', () => ({
+  EpubParser: {
+    parse: jest.fn().mockResolvedValue({
+      title: 'Test Book',
+      author: 'Test Author',
+    }),
+  },
+}));
+
+describe('US-1.1: Library Import (E2E-like)', () => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await AsyncStorage.clear();
   });
 
   it('Scenario: Import valid EPUB -> Book appears in list', async () => {
-    // GIVEN I am on the library screen
-    // (and the library is initially empty)
-    (BookRepository.getBooks as jest.Mock).mockResolvedValueOnce([]);
+    const { getByText, queryByText } = render(<LibraryScreen />);
     
-    const { getByText } = render(<LibraryScreen />);
-    
-    // Initially ensure empty state is visible
     await waitFor(() => {
       expect(getByText('Your library is empty')).toBeTruthy();
     });
 
-    // WHEN I tap the "Import Book" button and select a valid .epub file
-    const mockBook = {
-      id: '123',
-      title: 'Test Book',
-      author: 'Test Author',
-      uri: 'file://test.epub',
-      location: '',
-      lastRead: Date.now(),
-      progress: 0,
-    };
-
-    // Setup mocks for the interaction
+    // WHEN
     (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({
       canceled: false,
       assets: [{ uri: 'file://source.epub' }]
     });
-    
-    (BookRepository.addBook as jest.Mock).mockResolvedValue(mockBook);
-    
-    // The component re-fetches books after import, so we need to mock the next getBooks call
-    (BookRepository.getBooks as jest.Mock).mockResolvedValueOnce([mockBook]);
 
-    // Perform interaction
     fireEvent.press(getByText('Import'));
 
-    // THEN the book should appear in my library list with its title and author
-    await waitFor(() => {
+    // THEN
+    await waitFor(async () => {
+      // Wait for the book to appear first (positive assertion)
+      // This ensures we wait for the re-render where the state has updated
       expect(getByText('Test Book')).toBeTruthy();
       expect(getByText('Test Author')).toBeTruthy();
+      
+      // Then check that empty state is gone
+      expect(queryByText('Your library is empty')).toBeNull();
     });
 
-    // Verify repository calls
+    // Verify repository infrastructure calls (optional but good for confidence)
     expect(DocumentPicker.getDocumentAsync).toHaveBeenCalledWith({ type: 'application/epub+zip' });
-    expect(BookRepository.addBook).toHaveBeenCalledWith('file://source.epub');
-    expect(BookRepository.getBooks).toHaveBeenCalledTimes(2); // Initial load + refresh after import
+    
+    // Verify it was actually saved to storage
+    const storedBooks = await BookRepository.getBooks();
+    expect(storedBooks).toHaveLength(1);
+    expect(storedBooks[0]).toMatchObject({
+      title: 'Test Book',
+      author: 'Test Author',
+      uri: expect.stringContaining('file:///test-directory/books/'),
+    });
   });
 
   it('Scenario: Handle cancelled import', async () => {
-    // GIVEN I am on the library screen
-    (BookRepository.getBooks as jest.Mock).mockResolvedValue([]);
     const { getByText } = render(<LibraryScreen />);
 
-    await waitFor(() => expect(getByText('Import')).toBeTruthy());
-
-    // WHEN I cancel the import
     (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({
       canceled: true,
       assets: null
@@ -77,9 +110,9 @@ describe('US-1.1: Library Import', () => {
 
     fireEvent.press(getByText('Import'));
 
-    // THEN no book is added and repository is not called
-    await waitFor(() => {
-      expect(BookRepository.addBook).not.toHaveBeenCalled();
+    await waitFor(async () => {
+      const storedBooks = await BookRepository.getBooks();
+      expect(storedBooks).toHaveLength(0);
     });
   });
 });
