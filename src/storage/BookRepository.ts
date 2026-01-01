@@ -33,12 +33,6 @@ export const BookRepository = {
 
   async addBook(sourceUri: string): Promise<Book> {
     const id = Date.now().toString();
-    // Use Paths.document if available, else standard URI construction
-    // Docs say: new Directory(Paths.document, "books")
-    
-    // Check if Paths.document is available in the types we saw. 
-    // Yes: static get document(): Directory;
-    
     const booksDir = new Directory(Paths.document, 'books');
     const coversDir = new Directory(Paths.document, 'covers');
     
@@ -81,16 +75,6 @@ export const BookRepository = {
         const coverFile = new File(coversDir, `${id}.jpg`);
         // Remove data URI prefix if present
         const base64Data = metadata.cover.replace(/^data:image\/\w+;base64,/, "");
-        
-        // write(content: string | Uint8Array)
-        // Check if write accepts base64 string automatically or needs specific handling.
-        // The type signature says `content: string | Uint8Array`. usually fs writes strings as utf8.
-        // But for image data we need base64 decoding usually. 
-        // Docs for `write` options? `options?: FileWriteOptions`.
-        // Let's assume we might need to convert to Uint8Array first or passed simple string.
-        // Actually, the legacy `writeAsStringAsync` had `encoding` option. 
-        // The new `write` might expect bytes for binary.
-        
         const buffer = Buffer.from(base64Data, 'base64');
         coverFile.write(buffer);
         
