@@ -1,6 +1,6 @@
-import { File } from 'expo-file-system';
 import ePub from 'epubjs';
 import { Buffer } from 'buffer';
+import { IFileSystem } from '../adapters/IFileSystem';
 
 export interface BookMetadata {
   title: string;
@@ -8,11 +8,16 @@ export interface BookMetadata {
   cover?: string;
 }
 
+export interface Chapter {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export const EpubParser = {
-  parse: async (uri: string): Promise<BookMetadata> => {
-    // Read the file from the device file system
-    const file = new File(uri);
-    const bytes = await file.bytes();
+  parse: async (uri: string, fileSystem: IFileSystem): Promise<BookMetadata> => {
+    // Read the file using injected file system
+    const bytes = await fileSystem.readBytes(uri);
 
     // Convert to Buffer
     const buffer = Buffer.from(bytes);
@@ -37,7 +42,7 @@ export const EpubParser = {
         // Use timeout for manual extraction too, just in case
         const extractionPromise = book.archive.getBase64(coverPath);
         const timeoutPromise = new Promise<string>((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 7000)
+            setTimeout(() => reject(new Error('Timeout')), 2000)
         );
         // @ts-ignore
         coverUrl = await Promise.race([extractionPromise, timeoutPromise]);
@@ -45,7 +50,7 @@ export const EpubParser = {
         // Fallback to coverUrl() if internal path finding failed (unlikely)
          const coverPromise = book.coverUrl();
          const timeoutPromise = new Promise<string>((_, reject) => 
-           setTimeout(() => reject(new Error('Timeout')), 7000)
+           setTimeout(() => reject(new Error('Timeout')), 2000)
          );
          // @ts-ignore
          coverUrl = await Promise.race([coverPromise, timeoutPromise]);
@@ -59,5 +64,76 @@ export const EpubParser = {
       author: creator || 'Unknown Author',
       cover: coverUrl || undefined,
     };
+  },
+
+  parseChapters: async (uri: string, fileSystem: IFileSystem): Promise<Chapter[]> => {
+    try {
+        const bytes = await fileSystem.readBytes(uri);
+        const buffer = Buffer.from(bytes);
+        // @ts-ignore
+        const book = ePub(buffer.buffer);
+        await book.ready;
+
+        const chapters: Chapter[] = [];
+        
+        // Iterate over the spine to get linear reading order
+        // @ts-ignore
+        const spine = book.spine;
+        // @ts-ignore
+        const items = spine?.items || [];
+        
+        // Loop through spine items
+        for (let i = 0; i < items.length; i++) {
+           const item = items[i];
+           try {
+             // Retrieve the full Section object which has the .load method
+             // @ts-ignore
+             let section = spine.get(item.idref);
+             if (!section) {
+                 // Fallback to index if idref lookup fails
+                 // @ts-ignore
+                 section = spine.get(i);
+             }
+
+             if (section) {
+                 // @ts-ignore
+                 const loadedSection = await section.load(book.load.bind(book));
+                 
+                 // section is usually an HTML document or object. 
+                 // In node/react-native environment without DOM, getting text might be tricky.
+                 // However, depending on epubjs adapter, 'section' might be the raw text/xml.
+                 
+                 // Simplest extraction attempt: treat as string and strip tags?
+                 // Or use simple regex.
+                 const rawContent = loadedSection ? loadedSection.toString() : '';
+                 
+                 // Very naive HTML stripping for "Clean Text" prototype
+                 // Replace block tags with newlines to preserve some structure
+                 const plainText = rawContent
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<\/p>/gi, '\n\n')
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                 
+                 if (plainText.length > 0) {
+                     chapters.push({
+                         id: item.idref,
+                         title: item.idref, // Title often requires resolving TOC, skipping for now
+                         content: plainText
+                     });
+                 }
+             }
+           } catch (err) {
+               console.warn(`Failed to load chapter ${item.idref}`, JSON.stringify(err, Object.getOwnPropertyNames(err)));
+           }
+        }
+        
+        return chapters;
+
+    } catch (e) {
+        console.error('Failed to parse chapters', e);
+        return [];
+    }
   }
 };

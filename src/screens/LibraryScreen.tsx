@@ -3,7 +3,11 @@ import { StyleSheet, View, TouchableOpacity, FlatList, Alert, Image, ActivityInd
 import { Screen } from '../components/Screen';
 import { StyledText } from '../components/StyledText';
 import * as DocumentPicker from 'expo-document-picker';
-import { Book, BookRepository } from '../storage/BookRepository';
+import { Book } from '../storage/BookRepository';
+import { useBookRepository } from '../contexts/BookRepositoryContext';
+
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { RootStackParamList } from '../navigation/types';
 
 // Minimal mock if nav not ready, but we should assume we will have it.
 // For now, simple useEffect is enough if we are default screen.
@@ -11,11 +15,13 @@ import { Book, BookRepository } from '../storage/BookRepository';
 export const LibraryScreen = () => {
   const [books, setBooks] = useState<Book[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const bookRepository = useBookRepository();
 
   const loadBooks = useCallback(async () => {
-    const loaded = await BookRepository.getBooks();
+    const loaded = await bookRepository.getBooks();
     setBooks(loaded);
-  }, []);
+  }, [bookRepository]);
 
   useEffect(() => {
     loadBooks();
@@ -31,7 +37,7 @@ export const LibraryScreen = () => {
 
       setIsImporting(true);
       const { uri } = result.assets[0];
-      await BookRepository.addBook(uri);
+      await bookRepository.addBook(uri);
       await loadBooks();
     } catch (e) {
       console.error('Import failed:', e);
@@ -42,7 +48,10 @@ export const LibraryScreen = () => {
   };
 
   const renderBook = ({ item }: { item: Book }) => (
-    <View style={styles.bookItem}>
+    <TouchableOpacity 
+      style={styles.bookItem}
+      onPress={() => navigation.navigate('Reader', { bookId: item.id })}
+    >
       {item.cover ? (
         <Image source={{ uri: item.cover }} style={styles.bookCover} />
       ) : (
@@ -54,7 +63,7 @@ export const LibraryScreen = () => {
         <StyledText variant="m" weight="bold" numberOfLines={1}>{item.title}</StyledText>
         <StyledText variant="s" color="#666" numberOfLines={1}>{item.author}</StyledText>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (

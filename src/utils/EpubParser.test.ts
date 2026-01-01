@@ -1,19 +1,15 @@
 import { EpubParser } from './EpubParser';
-import { File } from 'expo-file-system';
+import { IFileSystem } from '../adapters/IFileSystem';
 import * as fs from 'fs';
 import * as path from 'path';
 
 // Use real epubjs
 jest.unmock('epubjs');
 
-// Mock expo-file-system to read from local fixture
-jest.mock('expo-file-system', () => {
-  const fs = require('fs');
-  const path = require('path');
-  return {
-    __esModule: true,
-    File: jest.fn().mockImplementation((uri) => ({
-      bytes: jest.fn().mockImplementation(async () => {
+// Create a Node.js-based file system for tests
+const fixturePath = path.resolve(__dirname, '../__tests__/fixtures/sample.epub');
+const createNodeFileSystem = (): IFileSystem => ({
+    readBytes: jest.fn().mockImplementation(async (uri: string) => {
         // Handle file:// uri or absolute path
         const filePath = uri.startsWith('file://') ? uri.replace('file://', '') : uri;
         
@@ -22,25 +18,29 @@ jest.mock('expo-file-system', () => {
         }
         const buffer = fs.readFileSync(filePath);
         return new Uint8Array(buffer);
-      }),
-    })),
-  };
+    }),
+    writeBase64: jest.fn().mockResolvedValue(undefined),
+    copyFile: jest.fn().mockResolvedValue(undefined),
+    directoryExists: jest.fn().mockReturnValue(true),
+    createDirectory: jest.fn(),
+    deleteDirectory: jest.fn(),
+    getDocumentPath: jest.fn().mockReturnValue('file:///documents'),
+    joinPath: jest.fn((...parts) => parts.join('/')),
 });
 
 describe('EpubParser', () => {
   it('should parse a real epub file', async () => {
-    // GIVEN a real fixture file URI
-    const fixturePath = path.resolve(__dirname, '../__tests__/fixtures/sample.epub');
+    // GIVEN a real fixture file URI and a file system
     const mockUri = `file://${fixturePath}`;
+    const fileSystem = createNodeFileSystem();
     
-    // WHEN we call parse
-    const book = await EpubParser.parse(mockUri);
+    // WHEN we call parse with the file system
+    const book = await EpubParser.parse(mockUri, fileSystem);
 
-    // THEN it should create a File instance
-    expect(File).toHaveBeenCalledWith(mockUri);
+    // THEN it should have called readBytes
+    expect(fileSystem.readBytes).toHaveBeenCalledWith(mockUri);
 
     // AND it should return valid metadata
-    // We check for truthy values since we don't know the exact content of the user's sample
     expect(book).toEqual(expect.objectContaining({
       title: expect.any(String),
       // We expect a valid cover string (base64 or url) from the real EPUB
@@ -61,20 +61,14 @@ describe('EpubParser', () => {
         
         expect(isJpeg || isPng).toBe(true);
     } else {
-        // Fallback for base64
+       // Fallback for base64
        expect(book.cover).toMatch(/^data:image\/(jpeg|png);base64,/);
     }
   });
 
   it('should return metadata without cover if cover extraction hangs', async () => {
-    // For this test we still want to simulate the hang, so we might need to mock epubjs again LOCALLY
-    // OR we rely on the timeout logic working with a real book (which wouldn't hang).
-    // To strictly test the *timeout logic*, we need to force a hang.
-    // Since we unmocked epubjs globally, we need to spy on the internal book object creation
-    // But EpubParser creates the book instance internally: `ePub(buffer.buffer)`.
-    // We can mock `epubjs` just for this test using `doMock`.
-    
-    jest.resetModules(); // Reset to allow re-mocking
+    // For this test we still want to simulate the hang, so we mock epubjs locally
+    jest.resetModules();
     jest.mock('epubjs', () => {
         return jest.fn(() => ({
             ready: Promise.resolve(),
@@ -82,28 +76,29 @@ describe('EpubParser', () => {
             coverUrl: () => new Promise(() => {}), // Never resolves
         }));
     });
+    
     // Re-import after reset
     const { EpubParser: ParserWithMock } = require('./EpubParser');
-    const { File: MockFile } = require('expo-file-system');
-
-    // Ensure File mock is still preserved or re-applied if resetModules cleared it
-    // resetModules clears the cache, but Jest mocks defined at top level might persist or need re-definition if they were factory-based? 
-    // Actually resetModules clears registry. We'd need to re-mock expo-file-system too or rely on __mocks__.
-    // Simplest approach: define checking logic in separate block or accept that we only test positive case now 
-    // OR re-define mocks inline.
     
-    // Re-mock expo-file-system for this isolation
-    jest.mock('expo-file-system', () => ({
-        File: jest.fn(() => ({ bytes: async () => new Uint8Array([]) }))
-    }));
+    // Create a minimal file system that returns empty bytes
+    const mockFileSystem: IFileSystem = {
+        readBytes: jest.fn().mockResolvedValue(new Uint8Array([])),
+        writeBase64: jest.fn().mockResolvedValue(undefined),
+        copyFile: jest.fn().mockResolvedValue(undefined),
+        directoryExists: jest.fn().mockReturnValue(true),
+        createDirectory: jest.fn(),
+        deleteDirectory: jest.fn(),
+        getDocumentPath: jest.fn().mockReturnValue('file:///documents'),
+        joinPath: jest.fn((...parts) => parts.join('/')),
+    };
 
     const mockUri = 'file:///hanging.epub';
     const start = Date.now();
-    const book = await ParserWithMock.parse(mockUri);
+    const book = await ParserWithMock.parse(mockUri, mockFileSystem);
     const duration = Date.now() - start;
 
     expect(duration).toBeGreaterThanOrEqual(1900);
     expect(book.title).toBe('Hanging Book');
     expect(book.cover).toBeUndefined();
-  }, 10000); // Increase timeout to allow for 7s wait
+  }, 10000);
 });

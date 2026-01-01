@@ -2,11 +2,21 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { LibraryScreen } from './LibraryScreen';
 import * as DocumentPicker from 'expo-document-picker';
-import { BookRepository } from '../storage/BookRepository';
+import { BookRepository, Book } from '../storage/BookRepository';
+import { BookRepositoryProvider, IBookRepository } from '../contexts/BookRepositoryContext';
+import { IFileSystem } from '../adapters/IFileSystem';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Mock DocumentPicker
 jest.mock('expo-document-picker');
+
+// Mock Navigation
+const mockNavigate = jest.fn();
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({
+    navigate: mockNavigate,
+  }),
+}));
 
 // Manual Mock for AsyncStorage to ensure behavior
 const mockAsyncStorage: Record<string, string> = {};
@@ -28,36 +38,6 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   }),
 }));
 
-// Mock expo-file-system
-jest.mock('expo-file-system', () => {
-  const mockFile = {
-    uri: 'file:///test-directory/target.epub',
-    copy: jest.fn(),
-    write: jest.fn(),
-    exists: true,
-  };
-
-  const mockDirectory = {
-    exists: false,
-    create: jest.fn(),
-    delete: jest.fn(),
-  };
-
-  return {
-    Paths: {
-      document: { uri: 'file:///test-directory/' }
-    },
-    File: jest.fn(() => mockFile),
-    Directory: jest.fn(() => mockDirectory),
-  };
-});
-
-// Mock expo-file-system/legacy
-jest.mock('expo-file-system/legacy', () => ({
-  writeAsStringAsync: jest.fn(),
-  EncodingType: { Base64: 'base64' },
-}));
-
 // Mock EpubParser
 jest.mock('../utils/EpubParser', () => ({
   EpubParser: {
@@ -68,6 +48,35 @@ jest.mock('../utils/EpubParser', () => ({
   },
 }));
 
+// Create a mock file system for tests
+const createMockFileSystem = (): IFileSystem => ({
+  readBytes: jest.fn().mockResolvedValue(new Uint8Array([0x50, 0x4B])),
+  writeBase64: jest.fn().mockResolvedValue(undefined),
+  copyFile: jest.fn().mockResolvedValue(undefined),
+  directoryExists: jest.fn().mockReturnValue(true),
+  createDirectory: jest.fn(),
+  deleteDirectory: jest.fn(),
+  getDocumentPath: jest.fn().mockReturnValue('file:///test-directory'),
+  joinPath: jest.fn((...parts) => parts.join('/')),
+});
+
+// Create test instances
+const mockFileSystem = createMockFileSystem();
+const testRepository = new BookRepository(mockFileSystem);
+
+// Helper to render with provider
+const renderWithProvider = (
+  ui: React.ReactElement, 
+  repository: IBookRepository = testRepository,
+  fileSystem: IFileSystem = mockFileSystem
+) => {
+  return render(
+    <BookRepositoryProvider repository={repository} fileSystem={fileSystem}>
+      {ui}
+    </BookRepositoryProvider>
+  );
+};
+
 describe('US-1.1: Library Import (E2E-like)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -75,7 +84,7 @@ describe('US-1.1: Library Import (E2E-like)', () => {
   });
 
   it('Scenario: Import valid EPUB -> Book appears in list', async () => {
-    const { getByText, queryByText } = render(<LibraryScreen />);
+    const { getByText, queryByText } = renderWithProvider(<LibraryScreen />);
     
     await waitFor(() => {
       expect(getByText('Your library is empty')).toBeTruthy();
@@ -104,17 +113,16 @@ describe('US-1.1: Library Import (E2E-like)', () => {
     expect(DocumentPicker.getDocumentAsync).toHaveBeenCalledWith({ type: 'application/epub+zip' });
     
     // Verify it was actually saved to storage
-    const storedBooks = await BookRepository.getBooks();
+    const storedBooks = await testRepository.getBooks();
     expect(storedBooks).toHaveLength(1);
     expect(storedBooks[0]).toMatchObject({
       title: 'Test Book',
       author: 'Test Author',
-      uri: 'file:///test-directory/target.epub',
     });
   });
 
   it('Scenario: Handle cancelled import', async () => {
-    const { getByText } = render(<LibraryScreen />);
+    const { getByText } = renderWithProvider(<LibraryScreen />);
 
     (DocumentPicker.getDocumentAsync as jest.Mock).mockResolvedValue({
       canceled: true,
@@ -124,8 +132,26 @@ describe('US-1.1: Library Import (E2E-like)', () => {
     fireEvent.press(getByText('Import'));
 
     await waitFor(async () => {
-      const storedBooks = await BookRepository.getBooks();
+      const storedBooks = await testRepository.getBooks();
       expect(storedBooks).toHaveLength(0);
     });
+  });
+
+  it('Scenario: Pressing a book navigates to Reader', async () => {
+    // Pre-populate a book
+    await testRepository.addBook('file:///test-directory/pre-existing.epub');
+
+    const { getByText } = renderWithProvider(<LibraryScreen />);
+
+    // Wait for book to render
+    await waitFor(() => {
+       expect(getByText('Test Book')).toBeTruthy();
+    });
+
+    // Press the book
+    fireEvent.press(getByText('Test Book'));
+
+    // Verify navigation
+    expect(mockNavigate).toHaveBeenCalledWith('Reader', { bookId: expect.any(String) });
   });
 });

@@ -1,13 +1,8 @@
 // BookRepository.ts - Book storage management
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
-  File,
-  Directory,
-  Paths,
-} from 'expo-file-system';
-import { writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { EpubParser } from '../utils/EpubParser';
 import { Buffer } from 'buffer';
+import { IFileSystem } from '../adapters/IFileSystem';
 
 export interface Book {
   id: string;
@@ -22,7 +17,13 @@ export interface Book {
 
 const BOOKS_KEY = '@voice_reader_books';
 
-export const BookRepository = {
+export class BookRepository {
+  private fileSystem: IFileSystem;
+
+  constructor(fileSystem: IFileSystem) {
+    this.fileSystem = fileSystem;
+  }
+
   async getBooks(): Promise<Book[]> {
     try {
       const json = await AsyncStorage.getItem(BOOKS_KEY);
@@ -31,31 +32,36 @@ export const BookRepository = {
       console.error('Failed to load books', e);
       return [];
     }
-  },
+  }
+
+  async getBook(id: string): Promise<Book | undefined> {
+    const books = await this.getBooks();
+    return books.find(b => b.id === id);
+  }
 
   async addBook(sourceUri: string): Promise<Book> {
     const id = Date.now().toString();
-    const booksDir = new Directory(Paths.document, 'books');
-    const coversDir = new Directory(Paths.document, 'covers');
+    const docPath = this.fileSystem.getDocumentPath();
+    const booksPath = this.fileSystem.joinPath(docPath, 'books');
+    const coversPath = this.fileSystem.joinPath(docPath, 'covers');
     
     // Ensure directories exist
-    if (!booksDir.exists) {
-      booksDir.create();
+    if (!this.fileSystem.directoryExists(booksPath)) {
+      this.fileSystem.createDirectory(booksPath);
     }
-    if (!coversDir.exists) {
-      coversDir.create();
+    if (!this.fileSystem.directoryExists(coversPath)) {
+      this.fileSystem.createDirectory(coversPath);
     }
 
-    const destFile = new File(booksDir, `${id}.epub`);
-    const sourceFile = new File(sourceUri);
+    const destUri = this.fileSystem.joinPath(booksPath, `${id}.epub`);
 
     // 1. Copy file to app storage
-    sourceFile.copy(destFile);
+    await this.fileSystem.copyFile(sourceUri, destUri);
 
     // 2. Parse metadata
     let metadata;
     try {
-      metadata = await EpubParser.parse(destFile.uri);
+      metadata = await EpubParser.parse(destUri, this.fileSystem);
     } catch (e) {
       console.warn('Failed to parse metadata, using defaults', e);
       metadata = { title: 'Unknown Book', author: 'Unknown Author' };
@@ -66,7 +72,7 @@ export const BookRepository = {
       title: metadata.title,
       author: metadata.author,
       location: '',
-      uri: destFile.uri,
+      uri: destUri,
       lastRead: Date.now(),
       progress: 0,
     };
@@ -74,10 +80,8 @@ export const BookRepository = {
     // 3. Save Cover if available
     if (metadata.cover) {
       try {
-        const coverFile = new File(coversDir, `${id}.jpg`);
+        const coverUri = this.fileSystem.joinPath(coversPath, `${id}.jpg`);
         let buffer: Buffer;
-
-
 
         if (metadata.cover.startsWith('blob:')) {
           // It's a Blob URL, we need to fetch it
@@ -91,13 +95,11 @@ export const BookRepository = {
           buffer = Buffer.from(base64Data, 'base64');
         }
 
-        // Write using legacy FileSystem API to avoid deprecation errors
+        // Write cover image
         const base64String = buffer.toString('base64');
-        await writeAsStringAsync(coverFile.uri, base64String, {
-            encoding: EncodingType.Base64
-        });
+        await this.fileSystem.writeBase64(coverUri, base64String);
         
-        newBook.cover = coverFile.uri;
+        newBook.cover = coverUri;
       } catch (e) {
         console.warn('Failed to save cover image', e);
       }
@@ -109,14 +111,15 @@ export const BookRepository = {
     await AsyncStorage.setItem(BOOKS_KEY, JSON.stringify(updatedBooks));
 
     return newBook;
-  },
+  }
 
   async clearAll(): Promise<void> {
     await AsyncStorage.removeItem(BOOKS_KEY);
-    const booksDir = new Directory(Paths.document, 'books');
-    const coversDir = new Directory(Paths.document, 'covers');
+    const docPath = this.fileSystem.getDocumentPath();
+    const booksPath = this.fileSystem.joinPath(docPath, 'books');
+    const coversPath = this.fileSystem.joinPath(docPath, 'covers');
     
-    if (booksDir.exists) booksDir.delete();
-    if (coversDir.exists) coversDir.delete();
+    this.fileSystem.deleteDirectory(booksPath);
+    this.fileSystem.deleteDirectory(coversPath);
   }
-};
+}

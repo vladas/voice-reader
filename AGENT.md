@@ -20,6 +20,8 @@ We build software by **optimising for learning**, maintaining flexibility, and 
 *   We focus on **what** the system does (behaviour) rather than **how** it does it (implementation).
     
 *   Tests act as "mini-specifications" that give us the confidence to change code safely.
+
+*   Prefer integration over mocking. Mock only at the edges of the architecture.
     
 
 ### 3\. Continuous Integration (CI)
@@ -75,3 +77,4 @@ The title should represent the decision made.
 
 * Use yarn instead of npm
 * Use DDD for code design.
+* You're allowed to run tests. Don't ask for permission.
