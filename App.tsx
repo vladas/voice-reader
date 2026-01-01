@@ -15,6 +15,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Colors } from './src/constants/Colors';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { BookRepositoryProvider } from './src/contexts/BookRepositoryContext';
+import { TTSProvider } from './src/contexts/TTSContext';
 import { ExpoFileSystem } from './src/adapters/ExpoFileSystem';
 import { BookRepository } from './src/storage/BookRepository';
 
@@ -48,10 +49,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <BookRepositoryProvider repository={bookRepository} fileSystem={fileSystem}>
-        <View style={styles.container} onLayout={onLayoutRootView}>
-          <StatusBar style="dark" />
-          <AppNavigator />
-        </View>
+        <TTSProvider>
+          <View style={styles.container} onLayout={onLayoutRootView}>
+            <StatusBar style="dark" />
+            <AppNavigator />
+          </View>
+        </TTSProvider>
       </BookRepositoryProvider>
     </SafeAreaProvider>
   );

@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { Book } from '../storage/BookRepository';
 import { useBookRepository, useFileSystem } from '../contexts/BookRepositoryContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Buffer } from 'buffer';
+import { TTSControls } from '../components/TTSControls';
 
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,6 +24,11 @@ export const ReaderScreen = () => {
   const [book, setBook] = useState<Book | null>(null);
   const [bookBase64, setBookBase64] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+  const [webViewReady, setWebViewReady] = useState(false);
+  const webViewRef = useRef<WebView>(null);
+  
+  // Promise resolver for text extraction
+  const textResolverRef = useRef<((text: string) => void) | null>(null);
 
   useEffect(() => {
     const loadBook = async () => {
@@ -44,7 +50,95 @@ export const ReaderScreen = () => {
       }
     };
     loadBook();
-  }, [bookId]);
+  }, [bookId, bookRepository, fileSystem, navigation]);
+
+  // Handle messages from WebView
+  const handleWebViewMessage = useCallback((event: WebViewMessageEvent) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      console.log('[ReaderScreen WebView]', data);
+      
+      if (data.type === 'ready') {
+        setWebViewReady(true);
+      } else if (data.type === 'visibleText' && textResolverRef.current) {
+        textResolverRef.current(data.text || '');
+        textResolverRef.current = null;
+      }
+    } catch (e) {
+      console.error('Error parsing WebView message:', e);
+    }
+  }, []);
+
+  // Request text from WebView for TTS
+  const requestTextForTTS = useCallback((): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!webViewRef.current || !webViewReady) {
+        resolve('');
+        return;
+      }
+      
+      textResolverRef.current = resolve;
+      
+      // Inject JS to get visible text from epub.js
+      // epub.js renders content inside iframes, so we need to access them
+      webViewRef.current.injectJavaScript(`
+        (function() {
+          try {
+            let text = '';
+            
+            // epub.js renders content in iframes inside #viewer
+            const iframes = document.querySelectorAll('#viewer iframe');
+            console.log('[TextExtract] Found iframes:', iframes.length);
+            
+            if (iframes.length > 0) {
+              iframes.forEach((iframe, index) => {
+                try {
+                  const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                  if (iframeDoc && iframeDoc.body) {
+                    const iframeText = iframeDoc.body.innerText || iframeDoc.body.textContent || '';
+                    text += iframeText + ' ';
+                    console.log('[TextExtract] Iframe ' + index + ' text length:', iframeText.length);
+                  }
+                } catch (e) {
+                  console.log('[TextExtract] Could not access iframe:', e.message);
+                }
+              });
+            }
+            
+            // Fallback: try direct content
+            if (!text.trim()) {
+              const viewer = document.querySelector('#viewer');
+              if (viewer) {
+                text = viewer.innerText || viewer.textContent || '';
+                console.log('[TextExtract] Fallback viewer text length:', text.length);
+              }
+            }
+            
+            console.log('[TextExtract] Total text length:', text.trim().length);
+            window.ReactNativeWebView.postMessage(JSON.stringify({ 
+              type: 'visibleText', 
+              text: text.trim() 
+            }));
+          } catch (e) {
+            console.log('[TextExtract] Error:', e.message);
+            window.ReactNativeWebView.postMessage(JSON.stringify({ 
+              type: 'visibleText', 
+              text: '' 
+            }));
+          }
+        })();
+        true;
+      `);
+      
+      // Timeout after 2 seconds
+      setTimeout(() => {
+        if (textResolverRef.current) {
+          textResolverRef.current('');
+          textResolverRef.current = null;
+        }
+      }, 2000);
+    });
+  }, [webViewReady]);
 
   if (isLoading) {
     return (
@@ -168,18 +262,17 @@ export const ReaderScreen = () => {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <WebView
+        ref={webViewRef}
         source={{ html: htmlContent }}
         style={styles.webview}
         originWhitelist={['*']}
         javaScriptEnabled={true}
         domStorageEnabled={true}
         allowFileAccess={true}
-        onMessage={(event) => {
-          const data = JSON.parse(event.nativeEvent.data);
-          console.log('[ReaderScreen WebView]', data);
-        }}
+        onMessage={handleWebViewMessage}
         onError={(e) => console.error('WebView error:', e.nativeEvent)}
       />
+      <TTSControls onRequestText={requestTextForTTS} />
     </View>
   );
 };
@@ -200,4 +293,3 @@ const styles = StyleSheet.create({
     backgroundColor: '#F4ECD8',
   },
 });
-

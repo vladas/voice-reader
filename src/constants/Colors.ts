@@ -6,6 +6,8 @@ export const Colors = {
     primary: '#D4A373', // Amber/Goldish
     secondary: '#8C7B75', // Muted brown
     surface: '#EAE0C8', // Slightly darker cream for cards
+    accent: '#B8860B', // Dark golden for FAB
+    border: '#D4C4A8', // Light border
     error: '#B00020',
   },
   dark: {
