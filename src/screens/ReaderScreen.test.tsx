@@ -11,11 +11,16 @@ import { NodeFileSystem } from '../adapters/NodeFileSystem';
 jest.mock('react-native-webview', () => {
     const React = require('react');
     const { View, Text } = require('react-native');
-    const MockWebView = React.forwardRef(({ source }: any, ref: any) => (
-        <View testID="webview" ref={ref}>
-            <Text>WebView Rendered</Text>
-        </View>
-    ));
+    const MockWebView = React.forwardRef(({ source }: any, ref: any) => {
+        React.useImperativeHandle(ref, () => ({
+            injectJavaScript: jest.fn(),
+        }));
+        return (
+            <View testID="webview">
+                <Text>WebView Rendered</Text>
+            </View>
+        );
+    });
     MockWebView.displayName = 'MockWebView';
     return {
         WebView: MockWebView,

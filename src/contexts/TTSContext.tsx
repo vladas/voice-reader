@@ -1,12 +1,15 @@
-import React, { createContext, useContext, useMemo, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import { ITTSAdapter, TTSProgressEvent } from '../adapters/ITTSAdapter';
 import { NativeTTSAdapter } from '../adapters/NativeTTSAdapter';
+import { splitIntoSentences } from '../utils/textUtils';
 
 interface TTSState {
   isPlaying: boolean;
   isPaused: boolean;
   rate: number;
-  progress: TTSProgressEvent | null;
+  currentSentence: string;
+  currentSentenceIndex: number;
+  totalSentences: number;
 }
 
 interface TTSContextValue extends TTSState {
@@ -32,37 +35,72 @@ export const TTSProvider = ({ children, adapter }: TTSProviderProps) => {
     isPlaying: false,
     isPaused: false,
     rate: 1.0,
-    progress: null,
+    currentSentence: '',
+    currentSentenceIndex: -1,
+    totalSentences: 0,
   });
 
-  // Subscribe to progress and end events
+  // Ref to track playback state synchronously for the loop
+  const isPlayingRef = useRef(false);
+  const shouldStopRef = useRef(false);
+
+  // Subscribe to progress events (still useful for internal adapter state)
   useEffect(() => {
-    const unsubProgress = ttsAdapter.onProgress((event) => {
-      setState(prev => ({ ...prev, progress: event }));
-    });
-
-    const unsubEnd = ttsAdapter.onEnd(() => {
-      setState(prev => ({ 
-        ...prev, 
-        isPlaying: false, 
-        isPaused: false,
-        progress: null 
-      }));
-    });
-
+    // We handle "end" manually in the loop now, but we listen for cleanup
     return () => {
-      unsubProgress();
-      unsubEnd();
+      ttsAdapter.stop();
     };
   }, [ttsAdapter]);
 
   const speak = useCallback(async (text: string) => {
-    setState(prev => ({ ...prev, isPlaying: true, isPaused: false }));
+    // 1. Split text
+    const sentences = splitIntoSentences(text);
+    if (sentences.length === 0) return;
+
+    // 2. Reset state
+    setState(prev => ({ 
+      ...prev, 
+      isPlaying: true, 
+      isPaused: false,
+      currentSentenceIndex: 0,
+      totalSentences: sentences.length,
+      currentSentence: sentences[0]
+    }));
+    isPlayingRef.current = true;
+    shouldStopRef.current = false;
+
     try {
-      await ttsAdapter.speak(text);
+      // 3. Play loop
+      for (let i = 0; i < sentences.length; i++) {
+        if (shouldStopRef.current) break;
+
+        // Update current sentence
+        const sentence = sentences[i];
+        setState(prev => ({ 
+          ...prev, 
+          currentSentence: sentence, 
+          currentSentenceIndex: i 
+        }));
+
+        // Speak and wait for finish
+        await ttsAdapter.speak(sentence);
+        
+        // If we were stopped during speech, break
+        if (shouldStopRef.current) break;
+      }
     } catch (e) {
-      setState(prev => ({ ...prev, isPlaying: false }));
-      throw e;
+      console.error('TTS Playback error:', e);
+    } finally {
+      // Cleanup
+      setState(prev => ({ 
+        ...prev, 
+        isPlaying: false, 
+        isPaused: false,
+        currentSentence: '',
+        currentSentenceIndex: -1
+      }));
+      isPlayingRef.current = false;
+      shouldStopRef.current = false;
     }
   }, [ttsAdapter]);
 
@@ -77,12 +115,14 @@ export const TTSProvider = ({ children, adapter }: TTSProviderProps) => {
   }, [ttsAdapter]);
 
   const stop = useCallback(() => {
+    shouldStopRef.current = true;
     ttsAdapter.stop();
     setState(prev => ({ 
       ...prev, 
       isPlaying: false, 
       isPaused: false,
-      progress: null 
+      currentSentence: '',
+      currentSentenceIndex: -1
     }));
   }, [ttsAdapter]);
 
@@ -93,6 +133,7 @@ export const TTSProvider = ({ children, adapter }: TTSProviderProps) => {
 
   const value = useMemo(() => ({
     ...state,
+    progress: null, // Legacy, removed
     adapter: ttsAdapter,
     speak,
     pause,

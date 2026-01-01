@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { Book } from '../storage/BookRepository';
 import { useBookRepository, useFileSystem } from '../contexts/BookRepositoryContext';
+import { useTTS } from '../contexts/TTSContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Buffer } from 'buffer';
 import { TTSControls } from '../components/TTSControls';
@@ -140,14 +141,103 @@ export const ReaderScreen = () => {
     });
   }, [webViewReady]);
 
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text>Loading...</Text>
-      </View>
-    );
-  }
+  const { currentSentence, isPlaying } = useTTS();
+
+  useEffect(() => {
+    // Inject JS to highlight the current sentence
+    if (webViewRef.current && webViewReady && currentSentence) {
+      console.log('[ReaderScreen] Highlighting sentence:', currentSentence.substring(0, 50) + '...');
+      
+      const safeSentence = JSON.stringify(currentSentence).slice(1, -1).replace(/'/g, "\\'");
+      
+      webViewRef.current.injectJavaScript(`
+        (function() {
+          try {
+            const sentence = '${safeSentence}';
+            
+            // Helper to remove highlights
+            function removeHighlights(doc) {
+              const marks = doc.querySelectorAll('mark.tts-highlight');
+              marks.forEach(m => {
+                const parent = m.parentNode;
+                parent.replaceChild(doc.createTextNode(m.textContent), m);
+                parent.normalize();
+              });
+            }
+            
+            // Helper to highlight in a document
+            function highlightInDoc(doc, text) {
+              // 1. Clear old highlights
+              removeHighlights(doc);
+              
+              if (!text) return false;
+
+              // 2. Find and highlight
+              // Note: window.find is non-standard but widely supported in WebViews
+              // Since we are inside iframes, we need to make sure we select the right window/doc scope
+              // Actually, window.find works on the window selection.
+              
+              // Only works if the document is focused?
+              // Let's try simple text search and wrapping
+              
+              // Using window.find() approach (requires contentWindow)
+              const win = doc.defaultView || doc.parentWindow;
+              if (win && win.find) {
+                // Reset selection
+                win.getSelection().removeAllRanges();
+                
+                // Find text
+                if (win.find(text, false, false, true, false, true, false)) { 
+                   // aString, aCaseSensitive, aBackwards, aWrapAround, aWholeWord, aSearchInFrames, aShowDialog
+                   const selection = win.getSelection();
+                   if (selection.rangeCount > 0) {
+                     const range = selection.getRangeAt(0);
+                     const mark = doc.createElement('mark');
+                     mark.className = 'tts-highlight';
+                     mark.style.backgroundColor = '#FFEB3B';
+                     mark.style.borderRadius = '4px';
+                     range.surroundContents(mark);
+                     mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                     selection.removeAllRanges();
+                     return true;
+                   }
+                }
+              }
+              return false;
+            }
+
+            // Iterate iframes (epub.js structure)
+            const iframes = document.querySelectorAll('#viewer iframe');
+            let found = false;
+            
+            iframes.forEach(iframe => {
+              if (found) return; // Stop if already found
+              try {
+                const doc = iframe.contentDocument || iframe.contentWindow.document;
+                if (doc) {
+                   if (highlightInDoc(doc, sentence)) {
+                     found = true;
+                   }
+                }
+              } catch(e) {
+                console.log('Error accessing iframe:', e);
+              }
+            });
+            
+            // Fallback to main document
+            if (!found) {
+               highlightInDoc(document, sentence);
+            }
+            
+          } catch (e) {
+            console.error('Highlight error:', e);
+          }
+        })();
+        true;
+      `);
+    }
+  }, [currentSentence, webViewReady]);
+
 
   if (!book || !bookBase64) {
     return (
