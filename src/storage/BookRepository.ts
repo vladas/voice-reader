@@ -1,9 +1,11 @@
+// BookRepository.ts - Book storage management
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   File,
   Directory,
-  Paths
+  Paths,
 } from 'expo-file-system';
+import { writeAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { EpubParser } from '../utils/EpubParser';
 import { Buffer } from 'buffer';
 
@@ -73,10 +75,27 @@ export const BookRepository = {
     if (metadata.cover) {
       try {
         const coverFile = new File(coversDir, `${id}.jpg`);
-        // Remove data URI prefix if present
-        const base64Data = metadata.cover.replace(/^data:image\/\w+;base64,/, "");
-        const buffer = Buffer.from(base64Data, 'base64');
-        coverFile.write(buffer);
+        let buffer: Buffer;
+
+
+
+        if (metadata.cover.startsWith('blob:')) {
+          // It's a Blob URL, we need to fetch it
+          const response = await fetch(metadata.cover);
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+        } else {
+          // Assume It's a Base64 Data URI
+          // Remove data URI prefix if present
+          const base64Data = metadata.cover.replace(/^data:image\/\w+;base64,/, "");
+          buffer = Buffer.from(base64Data, 'base64');
+        }
+
+        // Write using legacy FileSystem API to avoid deprecation errors
+        const base64String = buffer.toString('base64');
+        await writeAsStringAsync(coverFile.uri, base64String, {
+            encoding: EncodingType.Base64
+        });
         
         newBook.cover = coverFile.uri;
       } catch (e) {

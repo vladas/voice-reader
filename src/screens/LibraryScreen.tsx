@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { StyleSheet, View, TouchableOpacity, FlatList, Alert, Image } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, FlatList, Alert, Image, ActivityIndicator } from 'react-native';
 import { Screen } from '../components/Screen';
 import { StyledText } from '../components/StyledText';
 import * as DocumentPicker from 'expo-document-picker';
@@ -10,6 +10,7 @@ import { Book, BookRepository } from '../storage/BookRepository';
 
 export const LibraryScreen = () => {
   const [books, setBooks] = useState<Book[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
 
   const loadBooks = useCallback(async () => {
     const loaded = await BookRepository.getBooks();
@@ -28,12 +29,15 @@ export const LibraryScreen = () => {
 
       if (result.canceled) return;
 
+      setIsImporting(true);
       const { uri } = result.assets[0];
       await BookRepository.addBook(uri);
       await loadBooks();
     } catch (e) {
       console.error('Import failed:', e);
       Alert.alert('Error', 'Failed to import book: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -57,8 +61,16 @@ export const LibraryScreen = () => {
     <Screen style={styles.content}>
       <View style={styles.header}>
         <StyledText variant="xxl" weight="bold">Library</StyledText>
-        <TouchableOpacity onPress={handleImport} style={styles.importButton}>
-          <StyledText variant="s" weight="bold" color="#fff">Import</StyledText>
+        <TouchableOpacity 
+          onPress={handleImport} 
+          style={[styles.importButton, isImporting && { opacity: 0.5 }]}
+          disabled={isImporting}
+        >
+          {isImporting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <StyledText variant="s" weight="bold" color="#fff">Import</StyledText>
+          )}
         </TouchableOpacity>
       </View>
       

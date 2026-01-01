@@ -29,7 +29,30 @@ export const EpubParser = {
     const { title, creator } = book.package.metadata;
     
     // @ts-ignore: epubjs types include coverUrl
-    const coverUrl = await book.coverUrl();
+    let coverUrl: string | undefined;
+    try {
+      // @ts-ignore: epubjs book object has a cover property definition usually
+      const coverPath = book.cover; // book.cover is usually the internal path to the image
+      if (coverPath) {
+        // Use timeout for manual extraction too, just in case
+        const extractionPromise = book.archive.getBase64(coverPath);
+        const timeoutPromise = new Promise<string>((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 7000)
+        );
+        // @ts-ignore
+        coverUrl = await Promise.race([extractionPromise, timeoutPromise]);
+      } else {
+        // Fallback to coverUrl() if internal path finding failed (unlikely)
+         const coverPromise = book.coverUrl();
+         const timeoutPromise = new Promise<string>((_, reject) => 
+           setTimeout(() => reject(new Error('Timeout')), 7000)
+         );
+         // @ts-ignore
+         coverUrl = await Promise.race([coverPromise, timeoutPromise]);
+      }
+    } catch (e) {
+      console.warn('Cover extraction failed or timed out', e);
+    }
 
     return {
       title: title || 'Unknown Title',
