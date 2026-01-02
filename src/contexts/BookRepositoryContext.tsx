@@ -6,6 +6,7 @@ export interface IBookRepository {
   getBooks(): Promise<import('../storage/BookRepository').Book[]>;
   getBook(id: string): Promise<import('../storage/BookRepository').Book | undefined>;
   addBook(sourceUri: string): Promise<import('../storage/BookRepository').Book>;
+  updateBookProgress(id: string, location: string, progress: number): Promise<void>;
   clearAll(): Promise<void>;
 }
 

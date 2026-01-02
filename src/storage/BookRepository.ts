@@ -113,6 +113,20 @@ export class BookRepository {
     return newBook;
   }
 
+  async updateBookProgress(id: string, location: string, progress: number): Promise<void> {
+    const books = await this.getBooks();
+    const index = books.findIndex(b => b.id === id);
+    if (index !== -1) {
+      books[index] = {
+        ...books[index],
+        location,
+        progress,
+        lastRead: Date.now(),
+      };
+      await AsyncStorage.setItem(BOOKS_KEY, JSON.stringify(books));
+    }
+  }
+
   async clearAll(): Promise<void> {
     await AsyncStorage.removeItem(BOOKS_KEY);
     const docPath = this.fileSystem.getDocumentPath();
